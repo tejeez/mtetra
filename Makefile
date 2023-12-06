@@ -22,6 +22,9 @@ ${BUILD_DIR}/inc/l1.h: | ${BUILD_DIR}
 	cbindgen --config "${L1_DIR}/cbindgen.toml" --output "$@" "${L1_DIR}"
 
 ${BUILD_DIR}/mtetra: main.c ${BUILD_DIR}/inc/l1.h ${LIBL1} | ${BUILD_DIR}
-	${CC} ${CFLAGS} -o "$@" "$<" "-I${BUILD_DIR}/inc" "-L${LIBL1_DIR}" -ll1
+	${CC} ${CFLAGS} -o "$@" "$<" "-I${BUILD_DIR}/inc" "-L${LIBL1_DIR}" -ll1 -lm
 
-.PHONY: all ${LIBL1} ${BUILD_DIR}/inc/l1.h
+test: ${BUILD_DIR}/mtetra
+	$(shell "${BUILD_DIR}/mtetra" | head -c 1000000 > testout.raw)
+
+.PHONY: all test ${LIBL1} ${BUILD_DIR}/inc/l1.h

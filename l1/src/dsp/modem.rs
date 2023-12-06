@@ -1,0 +1,110 @@
+use num;
+use num::Complex;
+use crate::slot::SlotNumber;
+use crate::burst::{RxBurst, TxBurst};
+use crate::L1Callbacks;
+
+// Length of a hyperframe in nanoseconds.
+const HYPERFRAME_NS: i64 = 1000_000 * 255*4*18*60 / 18;
+
+fn ns_to_symbols(ns: i64) -> i32 {
+    (ns * 9 / 500000) as i32
+}
+
+#[allow(dead_code)]
+fn symbols_to_ns(symbols: i32) -> i64 {
+    (symbols as i64) * 500000 / 9
+}
+
+pub struct Modulator {
+    /// Timestamp at the beginning of a hyperframe
+    /// is used as a reference point.
+    htime: i64,
+
+    prev_hsym: i32,
+
+    mapper: DqpskMapper,
+
+    /// Slot number of the current burst
+    burst_slot: SlotNumber,
+    /// Current burst being transmitted
+    burst: TxBurst,
+}
+
+impl Modulator {
+    pub fn new() -> Self {
+        Self {
+            htime: 0,
+            prev_hsym: 255,
+            burst_slot: SlotNumber::new(4, 18, 60),
+            burst: TxBurst::None,
+            mapper: DqpskMapper::new(),
+        }
+    }
+
+    /// Produce a sample of transmit signal before matched filtering.
+    pub fn sample(
+        &mut self,
+        time: i64,
+        callbacks: &L1Callbacks,
+    ) -> Complex<f32> {
+        let mut output: Complex<f32> = num::zero();
+        // Current symbol number within a hyperframe
+        let hsym = ns_to_symbols((time - self.htime).rem_euclid(HYPERFRAME_NS));
+        // Is it time for a new symbol?
+        if hsym != self.prev_hsym {
+            // Split into a slot number and a symbol number within a slot.
+            let symnum = hsym.rem_euclid(255);
+            let slot = SlotNumber::from_int(hsym.div_euclid(255));
+            // Did a new slot just begin?
+            if slot != self.burst_slot {
+                self.burst_slot = slot;
+                // Ask for a new burst to transmit.
+                (callbacks.tx_cb)(callbacks.tx_cb_arg, slot, &mut self.burst);
+            }
+            output = match self.burst {
+                TxBurst::None => num::zero(),
+                TxBurst::Dl(bits) =>
+                    self.mapper.symbol(
+                        bits[symnum as usize * 2]     != 0,
+                        bits[symnum as usize * 2 + 1] != 0),
+                _ => todo!(),
+            };
+        }
+
+        self.prev_hsym = hsym;
+        output
+    }
+}
+
+
+struct DqpskMapper {
+    pub phase: i8,
+}
+
+impl DqpskMapper {
+    pub fn new() -> Self {
+        Self { phase: 0 }
+    }
+
+    #[allow(dead_code)]
+    pub fn reset_phase(&mut self) {
+        self.phase = 0;
+    }
+
+    pub fn symbol(&mut self, bit0: bool, bit1: bool) -> Complex<f32> {
+        self.phase = (self.phase + match (bit0, bit1) {
+            (true,  true)  => -3,
+            (true,  false) => -1,
+            (false, false) =>  1,
+            (false, true)  =>  3,
+        }) % 8;
+        // Map to constellation.
+        // This could probably be optimized using a look-up table.
+        let phase_radians = self.phase as f32 * (0.25 * std::f32::consts::PI);
+        Complex::<f32> {
+            re: phase_radians.cos(),
+            im: phase_radians.sin(),
+        }
+    }
+}
