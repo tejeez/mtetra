@@ -1,30 +1,55 @@
-L1_DIR=l1
-LIBL1_DIR=${L1_DIR}/target/release
-LIBL1=${LIBL1_DIR}/libl1.a
-BUILD_DIR=build
-CFLAGS=-Wall -Wextra -Os -g
+BUILD_DIR     = build
+BUILD_INC    := $(BUILD_DIR)/inc
+INCLUDE_DIRS += -I$(BUILD_INC)
 
-all: ${BUILD_DIR}/mtetra
+L1_DIR     = l1
+LIBL1_DIR := $(L1_DIR)/target/release
+LIBL1     := $(LIBL1_DIR)/libl1.a
+L1_H      := $(BUILD_INC)/l1.h
 
-${BUILD_DIR}:
-	mkdir -p -- "${BUILD_DIR}" "${BUILD_DIR}/inc"
+EXECUTABLE   := $(BUILD_DIR)/mtetra
+LIBRARIES    := m
+DEPENDENCIES :=
 
-# To simplify things, dependencies are not listed for LIBL1.
-# It is a .PHONY target for now so it always gets built.
-# cargo checks for dependencies anyway and only creates a new file
-# if something was changed, so maybe this is good enough.
-${LIBL1}:
-	cd -- "${L1_DIR}" && cargo build --release
+OBJECTS := $(BUILD_DIR)/main.o $(LIBL1)
 
-# TODO: proper dependencies.
-# It is .PHONY for now but it is not a great idea.
-l1.h:
-	cbindgen --config "${L1_DIR}/cbindgen.toml" --output "$@" "${L1_DIR}"
+CFLAGS += -MMD -Wall -Wextra -Os -g -std=gnu11 $(INCLUDE_DIRS)
 
-${BUILD_DIR}/mtetra: main.c l1.h ${LIBL1} | ${BUILD_DIR}
-	${CC} ${CFLAGS} -o "$@" "$<" "-L${LIBL1_DIR}" -ll1 -lm
+LIBS := \
+	$(foreach library, $(LIBRARIES), -l$(library)) \
+	$(shell PKG_CONFIG_PATH=$(PKG_CONFIG_PATH) pkg-config --libs $(DEPENDENCIES))
 
-test: ${BUILD_DIR}/mtetra
-	$(shell "${BUILD_DIR}/mtetra" | head -c 1000000 > testout.raw)
 
-.PHONY: all test ${LIBL1} l1.h
+all: $(EXECUTABLE)
+
+test: $(EXECUTABLE)
+	$(shell "$(EXECUTABLE)" | head -c 1000000 > testout.raw)
+
+clean:
+	rm -rf -- "$(BUILD_DIR)"
+
+$(BUILD_DIR):
+	mkdir -p -- "$(BUILD_DIR)"
+
+$(BUILD_INC):
+	mkdir -p -- "$(BUILD_INC)"
+
+# cargo checks dependencies itself and only creates a new file
+# if something was changed, so this is a .PHONY target.
+$(LIBL1):
+	cd -- "$(L1_DIR)" && cargo build --release
+
+# Same as above: cbindgen only creates a new file if something was changed.
+$(L1_H): | $(BUILD_INC)
+	cbindgen --config "$(L1_DIR)/cbindgen.toml" --output "$@" "$(L1_DIR)"
+
+$(BUILD_DIR)/%.o: %.c $(L1_H) | $(BUILD_DIR)
+	$(CC) -c $(CFLAGS) "$<" -o "$@"
+
+$(EXECUTABLE): $(OBJECTS) | $(BUILD_DIR)
+	$(CC) $(OBJECTS) $(FLAGS) $(LIBS) -o "$@"
+
+.PHONY: all test clean $(LIBL1) $(L1_H)
+
+# Dependencies
+-include $(wildcard $(BUILD_DIR)/*.d)
