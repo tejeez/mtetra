@@ -18,13 +18,13 @@ ${LIBL1}:
 
 # TODO: proper dependencies.
 # It is .PHONY for now but it is not a great idea.
-${BUILD_DIR}/inc/l1.h: | ${BUILD_DIR}
+l1.h:
 	cbindgen --config "${L1_DIR}/cbindgen.toml" --output "$@" "${L1_DIR}"
 
-${BUILD_DIR}/mtetra: main.c ${BUILD_DIR}/inc/l1.h ${LIBL1} | ${BUILD_DIR}
-	${CC} ${CFLAGS} -o "$@" "$<" "-I${BUILD_DIR}/inc" "-L${LIBL1_DIR}" -ll1 -lm
+${BUILD_DIR}/mtetra: main.c l1.h ${LIBL1} | ${BUILD_DIR}
+	${CC} ${CFLAGS} -o "$@" "$<" "-L${LIBL1_DIR}" -ll1 -lm
 
 test: ${BUILD_DIR}/mtetra
 	$(shell "${BUILD_DIR}/mtetra" | head -c 1000000 > testout.raw)
 
-.PHONY: all test ${LIBL1} ${BUILD_DIR}/inc/l1.h
+.PHONY: all test ${LIBL1} l1.h
