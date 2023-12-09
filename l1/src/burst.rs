@@ -52,11 +52,15 @@ pub enum RxBurst {
     /// Normal continuous down-link burst
     /// with normal training sequence 2.
     DlNormal2(RxDlBurst),
-    /// Synchronization continuous donk-link burst.
+    /// Synchronization continuous down-link burst.
     DlSync(RxDlBurst),
 
-    /// Normal up-link burst.
-    UlNormal(RxUlNormalBurst),
+    /// Normal up-link burst
+    /// with normal training sequence 1.
+    UlNormal1(RxUlNormalBurst),
+    /// Normal up-link burst
+    /// with normal training sequence 2.
+    UlNormal2(RxUlNormalBurst),
     /// Up-link burst(s) in subslots.
     /// Each subslot may contain a control up-link burst
     /// or no burst.
