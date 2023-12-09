@@ -1,7 +1,7 @@
 use num;
 use num::Complex;
 use crate::slot::SlotNumber;
-use crate::burst::{RxBurst, TxBurst};
+use crate::burst::TxBurst;
 use crate::L1Callbacks;
 
 // Length of a hyperframe in nanoseconds.
@@ -98,13 +98,21 @@ impl DqpskMapper {
             (true,  false) => -1,
             (false, false) =>  1,
             (false, true)  =>  3,
-        }) % 8;
-        // Map to constellation.
-        // This could probably be optimized using a look-up table.
-        let phase_radians = self.phase as f32 * (0.25 * std::f32::consts::PI);
-        Complex::<f32> {
-            re: phase_radians.cos(),
-            im: phase_radians.sin(),
-        }
+        }) & 7;
+        // Look-up table to map phase (in multiples of pi/4)
+        // to constellation points. Generated in Python with:
+        // import numpy as np
+        // print(",\n".join("Complex{ re: %9.6f, im: %9.6f }" % (v.real, v.imag) for v in np.exp(1j*np.linspace(0, np.pi*2, 8, endpoint=False))))
+        const CONSTELLATION: [Complex<f32>; 8] = [
+            Complex{ re:  1.000000, im:  0.000000 },
+            Complex{ re:  0.707107, im:  0.707107 },
+            Complex{ re:  0.000000, im:  1.000000 },
+            Complex{ re: -0.707107, im:  0.707107 },
+            Complex{ re: -1.000000, im:  0.000000 },
+            Complex{ re: -0.707107, im: -0.707107 },
+            Complex{ re: -0.000000, im: -1.000000 },
+            Complex{ re:  0.707107, im: -0.707107 }
+        ];
+        CONSTELLATION[self.phase as usize]
     }
 }
