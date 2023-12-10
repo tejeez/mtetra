@@ -4,7 +4,17 @@ use crate::slot::SlotNumber;
 use crate::burst::TxBurst;
 use crate::L1Callbacks;
 
-// Length of a hyperframe in nanoseconds.
+/// Symbol rate
+pub const SYMBOLRATE: f64 = 18000.0;
+
+/// Samples per symbol
+pub const SPS: usize = 4;
+
+/// Sample rate used by modulator and demodulator
+pub const FS: f64 = SYMBOLRATE * (SPS as f64);
+
+
+/// Length of a hyperframe in nanoseconds.
 const HYPERFRAME_NS: i64 = 1000_000 * 255*4*18*60 / 18;
 
 fn ns_to_symbols(ns: i64) -> i32 {
