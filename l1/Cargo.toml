@@ -10,3 +10,4 @@ crate_type = ["staticlib"]
 
 [dependencies]
 num = "0.4"
+static_fir = "0.2.0"

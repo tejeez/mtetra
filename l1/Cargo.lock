@@ -13,6 +13,7 @@ name = "l1"
 version = "0.1.0"
 dependencies = [
  "num",
+ "static_fir",
 ]
 
 [[package]]
@@ -90,3 +91,9 @@ checksum = "39e3200413f237f41ab11ad6d161bc7239c84dcb631773ccd7de3dfe4b5c267c"
 dependencies = [
  "autocfg",
 ]
+
+[[package]]
+name = "static_fir"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "65b8741dc43d307b01659f424d3c11376773096c3fa96aecbc3bf38dae6b0fc8"

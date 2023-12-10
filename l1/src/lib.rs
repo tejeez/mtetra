@@ -1,5 +1,8 @@
 use std::{ffi::{c_int, c_void}, io::Write};
 
+#[macro_use]
+extern crate static_fir;
+
 pub mod slot;
 pub use slot::SlotNumber;
 
