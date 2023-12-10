@@ -17,15 +17,14 @@ pub type BufferType = Complex<i64>;
 pub fn make_sinetable(length: usize) -> SineTableType {
     // Frequency in radians per bin
     let freq: f32 = std::f32::consts::PI * 2.0 / (length as f32);
-    let vec = (0..length).map(|i| {
+    (0..length).map(|i| {
         let phase = i as f32 * freq;
-        let scale =  i16::MAX as f32;
+        let scale = i16::MAX as f32;
         SineType {
             re: (phase.cos() * scale) as SineTypeReal,
             im: (phase.sin() * scale) as SineTypeReal,
         }
-    }).collect();
-    vec
+    }).collect()
 }
 
 /// Make a sine table for a given channel spacing and sample rate.

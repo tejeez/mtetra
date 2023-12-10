@@ -49,6 +49,7 @@ impl TxCarrier {
         callbacks: &L1Callbacks,
     ) {
         let mut modulated = self.modulator.sample(time, callbacks);
+        // TODO: channel filtering
         // TODO: proper scaling of CIC input
         modulated *= 1000.0;
         self.duc.process(
@@ -90,7 +91,6 @@ impl L1Dsp {
     ) {
         let mut timenow = time;
 
-        //let cicbuf = vec![self.common.cic_factor; num::zero()];
         for cicbuf in buf.chunks_exact_mut(self.common.cic_factor) {
             for v in cicbuf.iter_mut() { *v = num::zero(); }
             for carrier in self.tx_carriers.iter_mut() {

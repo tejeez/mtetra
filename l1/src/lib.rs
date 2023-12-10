@@ -64,8 +64,8 @@ impl L1 {
         // This is for initial testing purposes only.
         stdout.write_all(&unsafe { std::mem::transmute::<[Complex<i64>; BUFSIZE], [u8; BUFSIZE*16]>(buf) })?;
 
-        // Simulate a 4*18 kHz sample rate by incrementing timestamp
-        self.timenow += BUFSIZE as i64 * 13889;
+        // Simulate a 1.8 MHz sample rate by incrementing timestamp
+        self.timenow += (BUFSIZE as f64 * 1e9 / 1.8e6) as i64;
 
         Ok(())
     }
