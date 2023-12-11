@@ -80,7 +80,7 @@ impl TxCarrier {
         // TODO: proper scaling of CIC input
         modulated *= 1000.0;
         self.duc.process(
-            cic::IntegratorType {
+            cic::BufferType {
                 re: modulated.re as i64,
                 im: modulated.im as i64, },
             buf);
