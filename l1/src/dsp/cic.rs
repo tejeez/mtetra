@@ -41,7 +41,6 @@ fn buf_to_int(v: BufferType) -> IntegratorType {
 
 /// Convert integrator type to buffer type.
 #[inline]
-#[allow(dead_code)]
 fn int_to_buf(v: IntegratorType) -> BufferType {
     let a = v.to_array();
     BufferType { re: a[0], im: a[1] }
@@ -94,7 +93,7 @@ impl<const N: usize> CicDdc<N> {
     pub fn process(
         &mut self,
         input: &[BufferType]
-    ) -> IntegratorType {
+    ) -> BufferType {
         // Last integrator and first comb are combined into a sum
         let mut output: IntegratorType = IntegratorType::ZERO;
         for in_ in input {
@@ -120,7 +119,7 @@ impl<const N: usize> CicDdc<N> {
             output -= self.comb[n];
             self.comb[n] = previous;
         }
-        return output;
+        int_to_buf(output)
     }
 }
 
