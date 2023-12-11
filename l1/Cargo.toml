@@ -6,8 +6,22 @@ version = "0.1.0"
 edition = "2021"
 
 [lib]
+# Criterion benchmarking does not work for a static library crate,
+# so you have to comment the following line out for running
+# benchmarks. Some better solution would be nice here.
 crate_type = ["staticlib"]
 
 [dependencies]
 num = "0.4"
 wide = "0.7"
+
+
+# Benchmarking related things.
+# To run a benchmark, do: cargo bench
+
+[dev-dependencies]
+criterion = "0.3"
+
+[[bench]]
+name = "cic_benchmark"
+harness = false

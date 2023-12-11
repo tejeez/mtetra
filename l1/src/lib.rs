@@ -6,7 +6,7 @@ pub use slot::SlotNumber;
 pub mod burst;
 pub use burst::*;
 
-mod dsp;
+pub mod dsp;
 use dsp::L1Dsp;
 
 #[repr(C)]
@@ -89,9 +89,4 @@ pub extern "C" fn l1_process(
         Ok(()) => 0,
         _ => -1
     }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
 }

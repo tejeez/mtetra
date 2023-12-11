@@ -7,7 +7,7 @@ use crate::L1Callbacks;
 mod modem;
 use modem::Modulator;
 
-mod cic;
+pub mod cic;
 mod fir;
 
 type RxDdc = cic::CicDdc<4>;
