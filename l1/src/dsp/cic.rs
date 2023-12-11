@@ -13,6 +13,10 @@ pub type SineType = Complex<SineTypeReal>;
 pub type SineTableType = Rc<[SineType]>;
 /// Data type used for DDC input and DUC output buffers
 pub type BufferType = Complex<i64>;
+/// Data type used for DDC output and DUC input samples
+pub type SampleType = BufferType;
+
+const SINE_SHIFT: usize = 16;
 
 /// Make a sine table with a given length.
 pub fn make_sinetable(length: usize) -> SineTableType {
@@ -51,7 +55,7 @@ fn int_to_buf(v: IntegratorType) -> BufferType {
 #[inline]
 fn mul_buf_sine_a(v: BufferType, s: SineType) -> IntegratorType {
     let m = v * BufferType { re: s.re as i64, im: s.im as i64 };
-    IntegratorType::from([ m.re >> 16, m.im >> 16 ])
+    IntegratorType::from([ m.re >> SINE_SHIFT, m.im >> SINE_SHIFT ])
 }
 
 /// Multiply an integrator value with sine table value,
@@ -59,8 +63,44 @@ fn mul_buf_sine_a(v: BufferType, s: SineType) -> IntegratorType {
 #[inline]
 fn mul_int_sine_b(v: IntegratorType, s: SineType) -> BufferType {
     let a = v.to_array();
-    BufferType { re: a[0] >> 16,  im: a[1] >> 16 } *
+    BufferType { re: a[0] >> SINE_SHIFT, im: a[1] >> SINE_SHIFT } *
     BufferType { re: s.re as i64, im: s.im as i64 }
+}
+
+/// Convert Complex<f32> to DUC input sample.
+pub fn cf32_to_sample(sample: Complex<f32>, scaling: f32) -> SampleType {
+    SampleType {
+        re: (sample.re * scaling) as i64,
+        im: (sample.im * scaling) as i64,
+    }
+}
+
+/// Convert DDC output sample to Complex<f32>.
+pub fn sample_to_cf32(sample: SampleType, scaling: f32) -> Complex<f32> {
+    Complex::<f32> {
+        re: sample.re as f32 * scaling,
+        im: sample.im as f32 * scaling,
+    }
+}
+
+/// Convert Complex<f32> slice to CIC buffer type.
+pub fn cf32_to_buf(input: &[Complex<f32>], output: &mut [BufferType], scaling: f32) {
+    input.iter().zip(output).for_each(|(in_, out)| {
+        *out = BufferType {
+            re: (in_.re * scaling) as i64,
+            im: (in_.im * scaling) as i64,
+        }
+    });
+}
+
+/// Convert CIC buffer slice to Complex<f32>.
+pub fn buf_to_cf32(input: &[BufferType], output: &mut [Complex<f32>], scaling: f32) {
+    input.iter().zip(output).for_each(|(in_, out)| {
+        *out = Complex::<f32> {
+            re: in_.re as f32 * scaling,
+            im: in_.im as f32 * scaling,
+        }
+    });
 }
 
 /// Digital down-converter using a CIC filter.
@@ -93,7 +133,7 @@ impl<const N: usize> CicDdc<N> {
     pub fn process(
         &mut self,
         input: &[BufferType]
-    ) -> BufferType {
+    ) -> SampleType {
         // Last integrator and first comb are combined into a sum
         let mut output: IntegratorType = IntegratorType::ZERO;
         for in_ in input {
@@ -120,6 +160,27 @@ impl<const N: usize> CicDdc<N> {
             self.comb[n] = previous;
         }
         int_to_buf(output)
+    }
+
+    /// Compute scaling factors for a given decimation ratio
+    /// and maximum f32 input value.
+    /// Returns a tuple (input_scaling, output_scaling).
+    /// Input scaling factor should be passed to cf32_to_buf
+    /// and output scaling to sample_to_cf32.
+    pub fn scaling(ratio: usize, max_in: f32) -> (f32, f32) {
+        // How much integrator cascade grows numbers
+        let growth = (ratio as f32).powi((N + 1) as i32);
+        // Maximum value that can be fed to CIC without overflow.
+        let cic_in_max = (i64::MAX as f32) / growth;
+        // Maximum value that can be multiplied by sine table.
+        let sine_in_max = (i64::MAX >> SINE_SHIFT) as f32;
+        // Input scaling for convert_cf32_buf
+        let input_scaling = cic_in_max.min(sine_in_max) / max_in;
+        // Sine table has an amplitude of 0.5 to make sure
+        // complex multiplication does not grow numbers.
+        // Compensate for that in output scaling.
+        let output_scaling = 2.0 / (input_scaling * growth);
+        (input_scaling, output_scaling)
     }
 }
 
@@ -153,7 +214,7 @@ impl<const N: usize> CicDuc<N> {
     /// Length of the output slice shall be equal to interpolation ratio.
     pub fn process(
         &mut self,
-        input: BufferType,
+        input: SampleType,
         output: &mut [BufferType]
     ) {
         let mut sample = buf_to_int(input);
@@ -182,6 +243,96 @@ impl<const N: usize> CicDuc<N> {
                 self.integrator[n] += self.integrator[n+1];
             }
             self.integrator[N-1] += sample;
+        }
+    }
+
+    /// Compute scaling factors for a given interpolation ratio
+    /// and maximum f32 input value.
+    /// Returns a tuple (input_scaling, output_scaling).
+    /// Input scaling factor should be passed to cf32_to_sample
+    /// and output scaling to buf_to_cf32.
+    pub fn scaling(ratio: usize, max_in: f32) -> (f32, f32) {
+        // How much integrator cascade grows numbers
+        let growth = (ratio as f32).powi(N as i32);
+        // Maximum value that can be fed to CIC without overflow
+        let cic_in_max = (i64::MAX as f32) / growth;
+
+        let input_scaling = cic_in_max / max_in;
+
+        // Sine table has an amplitude of 0.5 to make sure
+        // complex multiplication does not grow numbers.
+        // Compensate for that in output scaling.
+        let output_scaling = 2.0 / (input_scaling * growth);
+        (input_scaling, output_scaling)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_duc_scaling() {
+        type DucType = CicDuc<4>;
+        let sinetable = make_sinetable(100);
+
+        for ratio in [1usize, 10, 100, 1000] {
+            eprintln!("Testing interpolation ratio {}", ratio);
+            let mut duc = DucType::new(sinetable.clone(), 1);
+            let max_in = 1.0;
+            let (scale_in, scale_out) = DucType::scaling(ratio, max_in);
+            // Test with worst case value (both elements max_in)
+            // to check it does not overflow.
+            let v_in = Complex::<f32> { re: max_in, im: max_in };
+            for i in 0..100 {
+                let mut cicbuf: Vec<BufferType> = vec![num::zero(); ratio];
+                let mut floatbuf: Vec<Complex<f32>> = vec![num::zero(); ratio];
+                duc.process(cf32_to_sample(v_in, scale_in), &mut cicbuf[..]);
+                buf_to_cf32(&cicbuf[..], &mut floatbuf[..], scale_out);
+                // Skip test for first few samples where output has not settled yet
+                if i > 10 {
+                    // Output should be sine wave with the same amplitude
+                    // as DUC input value. Check that it is close enough.
+                    for o in &floatbuf[..] {
+                        let gain = o.norm() / v_in.norm();
+                        //eprintln!("{}", gain);
+                        assert!(gain > 0.99);
+                        assert!(gain < 1.01);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_ddc_scaling() {
+        type DdcType = CicDdc<4>;
+        let sinetable = make_sinetable(100);
+
+        for ratio in [1usize, 10, 100, 1000] {
+            eprintln!("Testing decimation ratio {}", ratio);
+            // TODO: test with sine wave input.
+            // For now set center frequency to 0 so it can be fed DC for testing.
+            let mut ddc = DdcType::new(sinetable.clone(), 0);
+            let max_in = 1.0;
+            let (scale_in, scale_out) = DdcType::scaling(ratio, max_in);
+            // Test with worst case value (both elements max_in)
+            // to check it does not overflow.
+            let v_in = Complex::<f32> { re: max_in, im: max_in };
+            let floatbuf: Vec<Complex<f32>> = vec![v_in; ratio];
+            let mut cicbuf: Vec<BufferType> = vec![num::zero(); ratio];
+            cf32_to_buf(&floatbuf[..], &mut cicbuf[..], scale_in);
+            for i in 0..100 {
+                let ddcout = ddc.process(&cicbuf[..]);
+                let o = sample_to_cf32(ddcout, scale_out);
+                // Skip test for first few samples where output has not settled yet
+                if i > 10 {
+                    let gain = o.norm() / v_in.norm();
+                    //eprintln!("{}", gain);
+                    assert!(gain > 0.99);
+                    assert!(gain < 1.01);
+                }
+            }
         }
     }
 }

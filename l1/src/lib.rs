@@ -52,8 +52,7 @@ impl L1 {
         // Now just test by writing to stdout.
         use num::Complex;
         const BUFSIZE: usize = 7200;
-        // FIXME: change type back to f32 once type conversion has been implemented
-        let mut buf: [Complex<i64>; BUFSIZE] = [ num::zero(); BUFSIZE ];
+        let mut buf: [Complex<f32>; BUFSIZE] = [ num::zero(); BUFSIZE ];
 
         self.dsp.process(self.timenow, &mut buf, callbacks);
 
@@ -62,7 +61,7 @@ impl L1 {
         // Yes, the file format ends up depending on machine endianness etc,
         // so it's unsafe.
         // This is for initial testing purposes only.
-        stdout.write_all(&unsafe { std::mem::transmute::<[Complex<i64>; BUFSIZE], [u8; BUFSIZE*16]>(buf) })?;
+        stdout.write_all(&unsafe { std::mem::transmute::<[Complex<f32>; BUFSIZE], [u8; BUFSIZE*8]>(buf) })?;
 
         // Simulate a 1.8 MHz sample rate by incrementing timestamp
         self.timenow += (BUFSIZE as f64 * 1e9 / 1.8e6) as i64;

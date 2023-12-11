@@ -43,6 +43,10 @@ struct DspCommon {
     channel_spacing: f64,
     // CIC decimation and interpolation factor
     cic_factor: usize,
+    // CIC DDC scaling factors
+    ddc_scale: (f32, f32),
+    // CIC DUC scaling factors
+    duc_scale: (f32, f32),
     // Sine table for DDC/DUC
     sine_table: cic::SineTableType,
     // Channel filter taps
@@ -71,18 +75,15 @@ impl TxCarrier {
     /// Buffer length shall be equal to CIC interpolation ratio.
     pub fn process(
         &mut self,
+        common: &DspCommon,
         time: i64,
         buf: &mut [cic::BufferType],
         callbacks: &L1Callbacks,
     ) {
         let mut modulated = self.modulator.sample(time, callbacks);
         modulated = self.filter.sample(modulated);
-        // TODO: proper scaling of CIC input
-        modulated *= 1000.0;
         self.duc.process(
-            cic::BufferType {
-                re: modulated.re as i64,
-                im: modulated.im as i64, },
+            cic::cf32_to_sample(modulated, common.duc_scale.0),
             buf);
     }
 }
@@ -96,10 +97,13 @@ impl L1Dsp {
     pub fn new() -> Self {
         let radio_fs = 1.8e6;
         let channel_spacing: f64 = 12500.0;
+        let cic_factor = (radio_fs / modem::FS).round() as usize;
         let common = DspCommon {
             radio_fs: radio_fs,
             channel_spacing: channel_spacing,
-            cic_factor: (radio_fs / modem::FS).round() as usize,
+            cic_factor: cic_factor,
+            ddc_scale: RxDdc::scaling(cic_factor, 2.0),
+            duc_scale: TxDuc::scaling(cic_factor, 2.0),
             sine_table: cic::make_sinetable_freq(radio_fs, channel_spacing),
             filter_taps: fir::convert_symmetric_real_taps(&CHANNEL_FILTER_TAPS),
         };
@@ -113,18 +117,21 @@ impl L1Dsp {
     pub fn process(
         &mut self,
         time: i64,
-        //buf: &mut [Complex<f32>],
-        buf: &mut [cic::BufferType], // TODO: change back to f32 and add type conversion
+        buf: &mut [Complex<f32>],
         callbacks: &L1Callbacks,
     ) {
         let mut timenow = time;
 
-        for cicbuf in buf.chunks_exact_mut(self.common.cic_factor) {
+        // TODO: allocate this buffer only once and store it in self.common
+        let mut cicbuf: Vec<cic::BufferType> = vec![num::zero(); self.common.cic_factor];
+
+        for bufblock in buf.chunks_exact_mut(self.common.cic_factor) {
             for v in cicbuf.iter_mut() { *v = num::zero(); }
             for carrier in self.tx_carriers.iter_mut() {
-                carrier.process(timenow, cicbuf, callbacks);
+                carrier.process(&self.common, timenow, &mut cicbuf[..], callbacks);
             }
-            // Simulate a 4*18 kHz sample rate by incrementing timestamp.
+            cic::buf_to_cf32(&cicbuf[..], bufblock, self.common.duc_scale.1);
+            // Increment timestamp for a 4*18 kHz sample rate.
             // FIXME: This is not exact as it has been rounded to integer nanoseconds.
             timenow += 13889;
         }
