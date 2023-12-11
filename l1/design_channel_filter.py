@@ -38,12 +38,23 @@ def combined(f, fs):
     and CIC compensation filter."""
     return ciccomp(f, fs) * rrc(f, fs)
 
-def design_fir(response, fs = 1.0, ntaps = 25, fftsize = 256):
+def add_half_sample_offset(r):
+    """Offset resulting taps by half a sample by multiplying
+    frequency response with a complex sinusoid.
+    This results in symmetric taps with an even filter length.
+    """
+    r *= np.exp(np.linspace(
+        math.pi * -0.5j, math.pi * 0.5j,
+        num = len(r), endpoint=False, dtype=r.dtype))
+
+def design_fir(response, fs = 1.0, ntaps = 32, fftsize = 2**14):
     """Compute FIR coefficients as a Fourier transform of frequency response."""
     # Frequency response bins
-    r = np.zeros(fftsize)
+    r = np.zeros(fftsize, dtype=np.complex128)
     for i in range(0, fftsize):
         r[i] = response(fs / fftsize * (i - fftsize/2), fs)
+    if ntaps % 2 == 0:
+        add_half_sample_offset(r)
     # Transform
     t = np.fft.ifftshift(np.fft.ifft(np.fft.fftshift(r)))
     # Truncate to number of taps.

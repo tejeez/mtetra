@@ -2,14 +2,13 @@
 
 use num::Complex;
 
-use static_fir::FirFilter;
-
 use crate::L1Callbacks;
 
 mod modem;
 use modem::Modulator;
 
 mod cic;
+mod fir;
 
 type RxDdc = cic::CicDdc<4>;
 type TxDuc = cic::CicDuc<4>;
@@ -17,33 +16,24 @@ type TxDuc = cic::CicDuc<4>;
 /// Combined pulse shaping and CIC compensation filter
 /// for a rate of 4 samples per symbol.
 /// Coefficients from design_channel_filter.py
-impl_fir!(ChannelFilter, f32, 25, [
-    -0.00798239,
-    -0.00565370,
-    0.00620650,
-    0.01909224,
-    0.01867999,
-    -0.00306238,
-    -0.03680449,
-    -0.05611604,
-    -0.03220604,
-    0.04504324,
-    0.15462617,
-    0.25133416,
-    0.28986898,
-    0.25133416,
-    0.15462617,
-    0.04504324,
-    -0.03220604,
-    -0.05611604,
-    -0.03680449,
-    -0.00306238,
-    0.01867999,
-    0.01909224,
-    0.00620650,
-    -0.00565370,
-    -0.00798239
-]);
+const CHANNEL_FILTER_TAPS: [f32; 16] = [
+    0.27991672,
+    0.20776464,
+    0.09827440,
+    0.00030770,
+   -0.05085948,
+   -0.05025657,
+   -0.01979160,
+    0.01037267,
+    0.02136001,
+    0.01339594,
+   -0.00062394,
+   -0.00812343,
+   -0.00578368,
+    0.00089343,
+    0.00460255,
+    0.00273298
+];
 
 /// Common data used for all RX and TX carriers
 struct DspCommon {
@@ -55,14 +45,13 @@ struct DspCommon {
     cic_factor: usize,
     // Sine table for DDC/DUC
     sine_table: cic::SineTableType,
+    // Channel filter taps
+    filter_taps: fir::SymmetricRealTaps,
 }
 
 struct TxCarrier {
     duc: TxDuc,
-    // static_fir does not seem to support a complex filter
-    // real coefficients, so use two separate filters for now.
-    filter_re: FirFilter::<ChannelFilter>,
-    filter_im: FirFilter::<ChannelFilter>,
+    filter: fir::FirCf32Sym,
     modulator: Modulator,
 }
 
@@ -73,8 +62,7 @@ impl TxCarrier {
     ) -> Self {
         Self {
             duc: TxDuc::new(common.sine_table.clone(), (carrier_freq / common.channel_spacing).round() as isize),
-            filter_re: FirFilter::<ChannelFilter>::new(),
-            filter_im: FirFilter::<ChannelFilter>::new(),
+            filter: fir::FirCf32Sym::new(common.filter_taps.clone()),
             modulator: Modulator::new(),
         }
     }
@@ -88,8 +76,7 @@ impl TxCarrier {
         callbacks: &L1Callbacks,
     ) {
         let mut modulated = self.modulator.sample(time, callbacks);
-        modulated.re = self.filter_re.feed(modulated.re);
-        modulated.im = self.filter_im.feed(modulated.im);
+        modulated = self.filter.sample(modulated);
         // TODO: proper scaling of CIC input
         modulated *= 1000.0;
         self.duc.process(
@@ -114,6 +101,7 @@ impl L1Dsp {
             channel_spacing: channel_spacing,
             cic_factor: (radio_fs / modem::FS).round() as usize,
             sine_table: cic::make_sinetable_freq(radio_fs, channel_spacing),
+            filter_taps: fir::convert_symmetric_real_taps(&CHANNEL_FILTER_TAPS),
         };
 
         Self {
