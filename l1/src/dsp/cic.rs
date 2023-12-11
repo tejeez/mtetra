@@ -5,7 +5,7 @@ use num::Complex;
 /// Data type used for integrators
 pub type IntegratorType = Complex<i64>;
 /// Data type of real and imaginary parts used for sine table
-pub type SineTypeReal = i64;
+pub type SineTypeReal = i16;
 /// Data type used for elements of sine table
 pub type SineType = Complex<SineTypeReal>;
 /// Data type used for the whole sine table
@@ -21,8 +21,8 @@ pub fn make_sinetable(length: usize) -> SineTableType {
         let phase = i as f32 * freq;
         let scale = i16::MAX as f32;
         SineType {
-            re: (phase.cos() * scale) as SineTypeReal,
-            im: (phase.sin() * scale) as SineTypeReal,
+            re: (phase.cos() * scale).round() as SineTypeReal,
+            im: (phase.sin() * scale).round() as SineTypeReal,
         }
     }).collect()
 }
@@ -30,6 +30,22 @@ pub fn make_sinetable(length: usize) -> SineTableType {
 /// Make a sine table for a given channel spacing and sample rate.
 pub fn make_sinetable_freq(fs: f64, channel_spacing: f64) -> SineTableType {
     make_sinetable((fs / channel_spacing).round() as usize)
+}
+
+/// Multiply an integrator value with sine table value,
+/// shifting right after multiplication for better precision.
+#[inline]
+fn mul_int_sine_a(v: IntegratorType, s: SineType) -> IntegratorType {
+    let m = v * IntegratorType { re: s.re as i64, im: s.im as i64 };
+    IntegratorType { re: m.re >> 16, im: m.im >> 16 }
+}
+
+/// Multiply an integrator value with sine table value,
+/// shifting right before multiplication to avoid overflow.
+#[inline]
+fn mul_int_sine_b(v: IntegratorType, s: SineType) -> IntegratorType {
+    IntegratorType { re: v.re >> 16,  im: v.im >> 16 } *
+    IntegratorType { re: s.re as i64, im: s.im as i64 }
 }
 
 /// Digital down-converter using a CIC filter.
@@ -75,7 +91,8 @@ impl<const N: usize> CicDdc<N> {
             for n in 0..N-1 {
                 self.integrator[n] += self.integrator[n+1];
             }
-            self.integrator[N-1] += in_ * self.sinetable[self.phase] / 0x10000;
+            self.integrator[N-1] += mul_int_sine_a(*in_, self.sinetable[self.phase]);
+
             self.phase += self.freq;
             if self.phase >= self.sinetable.len() {
                 self.phase -= self.sinetable.len();
@@ -136,7 +153,7 @@ impl<const N: usize> CicDuc<N> {
         // Last comb and first integrator are implemented
         // by repeating the input sample.
         for out in output.iter_mut() {
-            *out += self.integrator[0] / 0x10000 * self.sinetable[self.phase];
+            *out += mul_int_sine_b(self.integrator[0], self.sinetable[self.phase]);
             self.phase += self.freq;
             if self.phase >= self.sinetable.len() {
                 self.phase -= self.sinetable.len();
