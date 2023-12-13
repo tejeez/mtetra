@@ -8,7 +8,7 @@ LIBL1     := $(LIBL1_DIR)/libl1.a
 L1_H      := $(BUILD_INC_DIR)/l1.h
 
 EXECUTABLE   := $(BUILD_DIR)/mtetra
-LIBRARIES    := m
+LIBRARIES    := m SoapySDR
 DEPENDENCIES :=
 
 INCLUDE_DIRS += -I$(BUILD_INC_DIR) -Il2

@@ -1,4 +1,6 @@
-use std::{ffi::{c_int, c_void}, io::Write};
+use std::ffi::{c_int, c_void};
+
+use num::Complex;
 
 pub mod slot;
 pub use slot::SlotNumber;
@@ -8,6 +10,8 @@ pub use burst::*;
 
 pub mod dsp;
 use dsp::L1Dsp;
+
+pub mod io;
 
 #[repr(C)]
 pub struct L1Callbacks {
@@ -32,48 +36,59 @@ pub struct L1Callbacks {
 }
 
 pub struct L1 {
-    dsp: L1Dsp,
-    timenow: i64,
+    radio:   io::soapy::SoapyIo,
+    dsp:     L1Dsp,
 }
 
 impl L1 {
-    fn new() -> Self {
-        Self {
+    fn new() -> Option<Self> {
+        Some(Self {
+            radio: io::soapy::SoapyIo::new(&io::soapy::SoapyIoConfig {
+                fs: 1.8e6,
+                rx_freq: 434e6,
+                tx_freq: 434e6,
+                rx_chan: 0,
+                tx_chan: 0,
+                rx_ant:  "LNAL",
+                tx_ant:  "BAND1",
+                rx_gain: 50.0,
+                tx_gain: 50.0,
+                dev_args: &[("driver", "lime")],
+                rx_args: &[],
+                tx_args: &[],
+            })?,
             dsp: L1Dsp::new(),
-            timenow: 0,
-        }
+        })
     }
 
     fn process(&mut self,
         callbacks: &L1Callbacks,
-    ) -> std::io::Result<()> {
-        // TODO: maybe move I/O to a separate struct
-        // and make it more configurable.
-        // Now just test by writing to stdout.
-        use num::Complex;
-        const BUFSIZE: usize = 7200;
-        let mut buf: [Complex<f32>; BUFSIZE] = [ num::zero(); BUFSIZE ];
-
-        self.dsp.process(self.timenow, &mut buf, callbacks);
-
-        let mut stdout = std::io::stdout();
-        // Let's be a bit lazy and use transmute to write the buffer to file.
-        // Yes, the file format ends up depending on machine endianness etc,
-        // so it's unsafe.
-        // This is for initial testing purposes only.
-        stdout.write_all(&unsafe { std::mem::transmute::<[Complex<f32>; BUFSIZE], [u8; BUFSIZE*8]>(buf) })?;
-
-        // Simulate a 1.8 MHz sample rate by incrementing timestamp
-        self.timenow += (BUFSIZE as f64 * 1e9 / 1.8e6) as i64;
-
-        Ok(())
+    ) -> Option<()> {
+        self.radio.process(|time, buf: &mut [Complex<f32>]| {
+            self.dsp.process(time, buf, callbacks)
+        })
     }
 }
 
 #[no_mangle]
 pub extern "C" fn l1_init(
 ) -> *mut L1 {
-    Box::into_raw(Box::<L1>::new(L1::new()))
+    match L1::new() {
+        Some(l1) => Box::into_raw(Box::<L1>::new(l1)),
+        None => core::ptr::null_mut()
+    }
+}
+
+/// Free L1 instance.
+/// This should always be called before programs exits
+/// to make SDR device is properly shut down and closed.
+#[no_mangle]
+pub extern "C" fn l1_free(
+    l1: *mut L1,
+) {
+    if !l1.is_null() {
+        drop(unsafe { Box::from_raw(l1) })
+    }
 }
 
 /// C wrapper for L1::process.
@@ -85,7 +100,7 @@ pub extern "C" fn l1_process(
 ) -> c_int {
     let l1_ = unsafe { l1.as_mut().expect("l1 shall not be NULL") };
     match l1_.process(&callbacks) {
-        Ok(()) => 0,
+        Some(()) => 0,
         _ => -1
     }
 }
