@@ -44,7 +44,7 @@ impl L1 {
         // 4 ms block length
         let blocklen = (fs * 0.004).round() as usize;
         // TODO: add L1 configuration
-        let test_to_file = true;
+        let test_to_file = false;
         Some(Self {
             radio: if test_to_file {
                 io::RadioIo::new(&io::RadioIoConfig::File(&io::file::FileIoConfig {
@@ -64,8 +64,11 @@ impl L1 {
                     tx_chan: 0,
                     rx_ant:  "LNAL",
                     tx_ant:  "BAND1",
-                    rx_gain: 50.0,
-                    tx_gain: 50.0,
+                    rx_gain: &[(None, 50.0)],
+                    tx_gain: &[
+                        (Some("PAD" ), 52.0),
+                        (Some("IAMP"), 0.0),
+                    ],
                     dev_args: &[("driver", "lime")],
                     rx_args: &[],
                     tx_args: &[],

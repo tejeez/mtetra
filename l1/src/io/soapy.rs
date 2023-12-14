@@ -24,10 +24,12 @@ pub struct SoapyIoConfig<'a> {
     pub rx_ant:   &'a str,
     /// Transmit antenna
     pub tx_ant:   &'a str,
-    /// Receive gain
-    pub rx_gain:  f64,
-    /// Transmit gain
-    pub tx_gain:  f64,
+    /// Receive gain(s).
+    /// Use (None, gain_value) to set the overall gain.
+    /// Use ("name", gain_value) to set a specific gain element.
+    pub rx_gain:  &'a[(Option<&'a str>, f64)],
+    /// Transmit gain(s).
+    pub tx_gain:  &'a[(Option<&'a str>, f64)],
     /// Device arguments
     pub dev_args: &'a [(&'a str, &'a str)],
     /// Receive stream arguments
@@ -86,11 +88,24 @@ fn soapysdr_setup(conf: &SoapyIoConfig) -> Result<SoapyIo, soapysdr::Error> {
         dev.set_antenna(soapysdr::Direction::Rx, conf.rx_chan, conf.rx_ant));
     soapycheck!("set TX antenna",
         dev.set_antenna(soapysdr::Direction::Tx, conf.tx_chan, conf.tx_ant));
-    // TODO: support setting gain elements
-    soapycheck!("set RX gain",
-        dev.set_gain(soapysdr::Direction::Rx, conf.rx_chan, conf.rx_gain));
-    soapycheck!("set TX gain",
-        dev.set_gain(soapysdr::Direction::Tx, conf.tx_chan, conf.tx_gain));
+    for (name, value) in conf.rx_gain {
+        if let Some(name) = name {
+            soapycheck!("set RX gain element",
+                dev.set_gain_element(soapysdr::Direction::Rx, conf.rx_chan, name.as_bytes().to_vec(), *value));
+        } else {
+            soapycheck!("set RX overall gain",
+                dev.set_gain(soapysdr::Direction::Rx, conf.rx_chan, *value));
+        }
+    }
+    for (name, value) in conf.tx_gain {
+        if let Some(name) = name {
+            soapycheck!("set TX gain element",
+                dev.set_gain_element(soapysdr::Direction::Tx, conf.tx_chan, name.as_bytes().to_vec(), *value));
+        } else {
+            soapycheck!("set TX overall gain",
+                dev.set_gain(soapysdr::Direction::Tx, conf.tx_chan, *value));
+        }
+    }
     let mut rx = soapycheck!("setup RX stream",
         dev.rx_stream_args(&[conf.rx_chan], convert_args(conf.rx_args)));
     let mut tx = soapycheck!("setup TX stream",
