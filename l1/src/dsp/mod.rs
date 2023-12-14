@@ -10,6 +10,10 @@ use modem::Modulator;
 pub mod cic;
 mod fir;
 
+/// Modem sample duration in nanoseconds.
+/// Modem runs at a sample rate of 4*18 kHz.
+const MODEM_SAMPLE_NS: i64 = 13889;
+
 type RxDdc = cic::CicDdc<4>;
 type TxDuc = cic::CicDuc<4>;
 
@@ -94,8 +98,7 @@ pub struct L1Dsp {
 }
 
 impl L1Dsp {
-    pub fn new() -> Self {
-        let radio_fs = 1.8e6;
+    pub fn new(radio_fs: f64) -> Self {
         let channel_spacing: f64 = 12500.0;
         let cic_factor = (radio_fs / modem::FS).round() as usize;
         let common = DspCommon {
@@ -116,11 +119,13 @@ impl L1Dsp {
 
     pub fn process(
         &mut self,
-        time: i64,
         buf: &mut [Complex<f32>],
+        rx_time: i64,
+        tx_time: i64,
         callbacks: &L1Callbacks,
     ) {
-        let mut timenow = time;
+        let mut rx_time_now = rx_time;
+        let mut tx_time_now = tx_time;
 
         // TODO: allocate this buffer only once and store it in self.common
         let mut cicbuf: Vec<cic::BufferType> = vec![num::zero(); self.common.cic_factor];
@@ -128,12 +133,13 @@ impl L1Dsp {
         for bufblock in buf.chunks_exact_mut(self.common.cic_factor) {
             for v in cicbuf.iter_mut() { *v = num::zero(); }
             for carrier in self.tx_carriers.iter_mut() {
-                carrier.process(&self.common, timenow, &mut cicbuf[..], callbacks);
+                carrier.process(&self.common, tx_time_now, &mut cicbuf[..], callbacks);
             }
             cic::buf_to_cf32(&cicbuf[..], bufblock, self.common.duc_scale.1);
-            // Increment timestamp for a 4*18 kHz sample rate.
+            // Increment timestamps for a 4*18 kHz sample rate.
             // FIXME: This is not exact as it has been rounded to integer nanoseconds.
-            timenow += 13889;
+            rx_time_now += MODEM_SAMPLE_NS;
+            tx_time_now += MODEM_SAMPLE_NS;
         }
     }
 }

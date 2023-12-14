@@ -42,9 +42,13 @@ pub struct L1 {
 
 impl L1 {
     fn new() -> Option<Self> {
+        let fs: f64 = 1.8e6;
         Some(Self {
             radio: io::soapy::SoapyIo::new(&io::soapy::SoapyIoConfig {
-                fs: 1.8e6,
+                // 4 ms block length
+                blocklen: (fs * 0.004).round() as usize,
+                latency_blocks: 3,
+                fs: fs,
                 rx_freq: 434e6,
                 tx_freq: 434e6,
                 rx_chan: 0,
@@ -57,15 +61,15 @@ impl L1 {
                 rx_args: &[],
                 tx_args: &[],
             })?,
-            dsp: L1Dsp::new(),
+            dsp: L1Dsp::new(fs),
         })
     }
 
     fn process(&mut self,
         callbacks: &L1Callbacks,
     ) -> Option<()> {
-        self.radio.process(|time, buf: &mut [Complex<f32>]| {
-            self.dsp.process(time, buf, callbacks)
+        self.radio.process(|buf, rx_time, tx_time| {
+            self.dsp.process(buf, rx_time, tx_time, callbacks)
         })
     }
 }

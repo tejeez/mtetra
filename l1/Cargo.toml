@@ -14,7 +14,7 @@ crate_type = ["staticlib"]
 [dependencies]
 num = "0.4"
 wide = "0.7"
-soapysdr = "0.4.0"
+soapysdr = { version = "0.4.0", path = "../rust-soapysdr" }
 
 # Benchmarking related things.
 # To run a benchmark, do: cargo bench

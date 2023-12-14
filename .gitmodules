@@ -1,0 +1,3 @@
+[submodule "rust-soapysdr"]
+	path = rust-soapysdr
+	url = https://github.com/tejeez/rust-soapysdr.git
