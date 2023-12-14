@@ -25,7 +25,7 @@ LIBS := \
 all: $(EXECUTABLE)
 
 test: $(EXECUTABLE)
-	$(shell "$(EXECUTABLE)" | head -c 1000000 > testout.raw)
+	$(shell "$(EXECUTABLE)")
 
 clean:
 	rm -rf -- "$(BUILD_DIR)"

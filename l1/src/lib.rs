@@ -1,7 +1,5 @@
 use std::ffi::{c_int, c_void};
 
-use num::Complex;
-
 pub mod slot;
 pub use slot::SlotNumber;
 
@@ -36,31 +34,43 @@ pub struct L1Callbacks {
 }
 
 pub struct L1 {
-    radio:   io::soapy::SoapyIo,
+    radio:   io::RadioIo,
     dsp:     L1Dsp,
 }
 
 impl L1 {
     fn new() -> Option<Self> {
         let fs: f64 = 1.8e6;
+        // 4 ms block length
+        let blocklen = (fs * 0.004).round() as usize;
+        // TODO: add L1 configuration
+        let test_to_file = true;
         Some(Self {
-            radio: io::soapy::SoapyIo::new(&io::soapy::SoapyIoConfig {
-                // 4 ms block length
-                blocklen: (fs * 0.004).round() as usize,
-                latency_blocks: 3,
-                fs: fs,
-                rx_freq: 434e6,
-                tx_freq: 434e6,
-                rx_chan: 0,
-                tx_chan: 0,
-                rx_ant:  "LNAL",
-                tx_ant:  "BAND1",
-                rx_gain: 50.0,
-                tx_gain: 50.0,
-                dev_args: &[("driver", "lime")],
-                rx_args: &[],
-                tx_args: &[],
-            })?,
+            radio: if test_to_file {
+                io::RadioIo::new(&io::RadioIoConfig::File(&io::file::FileIoConfig {
+                    blocklen: blocklen,
+                    fs: fs,
+                    stop_time: 1e9 as i64,
+                    tx_filename: "test_out.raw",
+                }))?
+            } else {
+                io::RadioIo::new(&io::RadioIoConfig::Soapy(&io::soapy::SoapyIoConfig {
+                    blocklen: blocklen,
+                    latency_blocks: 3,
+                    fs: fs,
+                    rx_freq: 434e6,
+                    tx_freq: 434e6,
+                    rx_chan: 0,
+                    tx_chan: 0,
+                    rx_ant:  "LNAL",
+                    tx_ant:  "BAND1",
+                    rx_gain: 50.0,
+                    tx_gain: 50.0,
+                    dev_args: &[("driver", "lime")],
+                    rx_args: &[],
+                    tx_args: &[],
+                }))?
+            },
             dsp: L1Dsp::new(fs),
         })
     }
