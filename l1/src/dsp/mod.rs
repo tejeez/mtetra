@@ -51,6 +51,9 @@ struct DspCommon {
     ddc_scale: (f32, f32),
     // CIC DUC scaling factors
     duc_scale: (f32, f32),
+    // DUC input scaling multiplied by other scaling factors
+    // to combine all of them to the same processing step.
+    duc_input_scaling_combined: f32,
     // Sine table for DDC/DUC
     sine_table: cic::SineTableType,
     // Channel filter taps
@@ -87,7 +90,7 @@ impl TxCarrier {
         let mut modulated = self.modulator.sample(time, callbacks);
         modulated = self.filter.sample(modulated);
         self.duc.process(
-            cic::cf32_to_sample(modulated, common.duc_scale.0),
+            cic::cf32_to_sample(modulated, common.duc_input_scaling_combined),
             buf);
     }
 }
@@ -106,7 +109,13 @@ impl L1Dsp {
             channel_spacing: channel_spacing,
             cic_factor: cic_factor,
             ddc_scale: RxDdc::scaling(cic_factor, 2.0),
+            // Output amplitude is designed to stay below 1.0, but CIC
+            // compensation filter may result in somewhat higher input values,
+            // so specify 2.0 as maximum input to have plenty of margin.
             duc_scale: TxDuc::scaling(cic_factor, 2.0),
+            // Computed each time process() is run to also work correctly
+            // in case we end up adding more carriers after initialization.
+            duc_input_scaling_combined: 0.0,
             sine_table: cic::make_sinetable_freq(radio_fs, channel_spacing),
             filter_taps: fir::convert_symmetric_real_taps(&CHANNEL_FILTER_TAPS),
         };
@@ -129,6 +138,12 @@ impl L1Dsp {
 
         // TODO: allocate this buffer only once and store it in self.common
         let mut cicbuf: Vec<cic::BufferType> = vec![num::zero(); self.common.cic_factor];
+
+        // Adjusted to keep peak magnitude just below 1.0.
+        // Reduce carrier amplitude with number of carriers
+        // to keep worst case peaks after combining just below 1.0.
+        let modulator_scaling = 0.68 * modem::SPS as f32 / self.tx_carriers.len() as f32;
+        self.common.duc_input_scaling_combined = modulator_scaling * self.common.duc_scale.0;
 
         for bufblock in buf.chunks_exact_mut(self.common.cic_factor) {
             for v in cicbuf.iter_mut() { *v = num::zero(); }
