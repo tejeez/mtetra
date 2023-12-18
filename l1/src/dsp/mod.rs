@@ -2,7 +2,7 @@
 
 use num::Complex;
 
-use crate::L1Callbacks;
+use crate::{L1Callbacks, SlotNumber, TxBurst};
 
 mod modem;
 use modem::Modulator;
@@ -61,6 +61,7 @@ struct DspCommon {
 }
 
 struct TxCarrier {
+    id: i32,
     duc: TxDuc,
     filter: fir::FirCf32Sym,
     modulator: Modulator,
@@ -69,9 +70,11 @@ struct TxCarrier {
 impl TxCarrier {
     pub fn new(
         common: &DspCommon,
+        id: i32,
         carrier_freq: f64,
     ) -> Self {
         Self {
+            id,
             duc: TxDuc::new(common.sine_table.clone(), (carrier_freq / common.channel_spacing).round() as isize),
             filter: fir::FirCf32Sym::new(common.filter_taps.clone()),
             modulator: Modulator::new(),
@@ -87,7 +90,11 @@ impl TxCarrier {
         buf: &mut [cic::BufferType],
         callbacks: &L1Callbacks,
     ) {
-        let mut modulated = self.modulator.sample(time, callbacks);
+        let mut modulated = self.modulator.sample(time,
+            &mut |slot: SlotNumber, slot_time: i64, burst: &mut TxBurst| {
+                (callbacks.tx_burst)(callbacks.tx_burst_arg, self.id, slot, slot_time, burst)
+            }
+        );
         modulated = self.filter.sample(modulated);
         self.duc.process(
             cic::cf32_to_sample(modulated, common.duc_input_scaling_combined),
@@ -121,7 +128,7 @@ impl L1Dsp {
         };
 
         Self {
-            tx_carriers: vec![TxCarrier::new(&common, 25000.0)],
+            tx_carriers: vec![TxCarrier::new(&common, 0, 25000.0), TxCarrier::new(&common, 1, 50000.0)],
             common: common,
         }
     }

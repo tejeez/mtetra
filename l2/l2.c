@@ -14,17 +14,17 @@ struct L2 *l2_init(void)
 	return l2;
 }
 
-void l2_rx_callback(void *arg, struct SlotNumber slot, const struct RxBurst *burst)
+void l2_rx_callback(void *arg, int32_t carrier, struct SlotNumber slot, int64_t slot_time, const struct RxBurst *burst)
 {
 	struct L2 *l2 = arg;
-	fprintf(stderr, "RX callback for slot %2d,%2d,%2d\n", slot.multiframe, slot.frame, slot.timeslot);
+	fprintf(stderr, "RX callback for carrier %2d slot %2d,%2d,%2d\n", carrier, slot.multiframe, slot.frame, slot.timeslot);
 	// TODO
 }
 
-void l2_tx_callback(void *arg, struct SlotNumber slot, struct TxBurst *burst)
+void l2_tx_callback(void *arg, int32_t carrier, struct SlotNumber slot, int64_t slot_time, struct TxBurst *burst)
 {
 	struct L2 *l2 = arg;
-	fprintf(stderr, "TX callback for slot %2d,%2d,%2d\n", slot.multiframe, slot.frame, slot.timeslot);
+	fprintf(stderr, "TX callback for carrier %2d slot %2d,%2d,%2d\n", carrier, slot.multiframe, slot.frame, slot.timeslot);
 
 	// Make some TX burst for testing.
 	// Transmit random bits to see if spectrum looks correct.

@@ -2,7 +2,6 @@ use num;
 use num::Complex;
 use crate::slot::SlotNumber;
 use crate::burst::TxBurst;
-use crate::L1Callbacks;
 
 /// Symbol rate
 pub const SYMBOLRATE: f64 = 18000.0;
@@ -56,7 +55,7 @@ impl Modulator {
     pub fn sample(
         &mut self,
         time: i64,
-        callbacks: &L1Callbacks,
+        get_burst: &mut dyn FnMut(SlotNumber, i64, &mut TxBurst),
     ) -> Complex<f32> {
         let mut output: Complex<f32> = num::zero();
         // Current symbol number within a hyperframe
@@ -69,8 +68,10 @@ impl Modulator {
             // Did a new slot just begin?
             if slot != self.burst_slot {
                 self.burst_slot = slot;
+                self.burst = TxBurst::None;
                 // Ask for a new burst to transmit.
-                (callbacks.tx_cb)(callbacks.tx_cb_arg, slot, &mut self.burst);
+                // TODO: pass slot time
+                get_burst(slot, 0, &mut self.burst);
             }
             output = match self.burst {
                 TxBurst::None => num::zero(),

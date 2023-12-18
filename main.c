@@ -36,10 +36,11 @@ void *realtime_thread(void *arg)
 		int ret = l1_process(
 			l1,
 			(struct L1Callbacks) {
-				.rx_cb = l2_rx_callback,
-				.rx_cb_arg = l2,
-				.tx_cb = l2_tx_callback,
-				.tx_cb_arg = l2,
+				.rx_burst = l2_rx_callback,
+				.rx_burst_arg = l2,
+				.tx_burst = l2_tx_callback,
+				.tx_burst_arg = l2,
+				// TODO: command callbacks
 			}
 		);
 		if (ret < 0) {

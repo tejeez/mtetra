@@ -12,25 +12,70 @@ use dsp::L1Dsp;
 pub mod io;
 
 #[repr(C)]
+pub struct L1RxCommands {
+    /// Slot timestamp corresponding to timing_slot.
+    /// Used if set_timing is true.
+    pub timing_time: i64,
+    /// Slot number corresponding to timing_time.
+    /// Used if set_timing is true.
+    pub timing_slot: SlotNumber,
+    /// Set slot timing according to timing_slot and timing_time.
+    pub set_timing: bool,
+    // TODO: RX mode setting
+}
+
+#[repr(C)]
+pub struct L1TxCommands {
+    /// Slot timestamp corresponding to timing_slot
+    /// Used if set_timing is true.
+    pub timing_time: i64,
+    /// Slot number corresponding to timing_time.
+    /// Used if set_timing is true.
+    pub timing_slot: SlotNumber,
+    /// Set slot timing according to timing_slot and timing_time.
+    pub set_timing: bool,
+}
+
+#[repr(C)]
 pub struct L1Callbacks {
     /// C function to process received burst(s).
-    /// Called once per slot.
-    pub rx_cb: extern "C" fn(
+    /// Called once per slot for each carrier.
+    pub rx_burst: extern "C" fn(
         arg: *mut c_void,
+        carrier: i32,
         slot: SlotNumber,
+        slot_time: i64,
         burst: *const RxBurst,
     ),
-    /// Argument passed to rx_cb.
-    pub rx_cb_arg: *mut c_void,
+    /// Argument passed to rx_burst.
+    pub rx_burst_arg: *mut c_void,
     /// C function to produce a transmit burst.
-    /// Called once per slot.
-    pub tx_cb: extern "C" fn(
+    /// Called once per slot for each carrier.
+    pub tx_burst: extern "C" fn(
         arg: *mut c_void,
+        carrier: i32,
         slot: SlotNumber,
+        slot_time: i64,
         burst: *mut TxBurst,
     ),
-    /// Argument passed to tx_cb.
-    pub tx_cb_arg: *mut c_void,
+    /// Argument passed to tx_burst.
+    pub tx_burst_arg: *mut c_void,
+    /// Get commands for a receive carrier.
+    pub rx_cmd: extern "C" fn(
+        arg: *mut c_void,
+        carrier: i32,
+        commands: *mut L1RxCommands,
+    ),
+    /// Argument passed to rx_cmd.
+    pub rx_cmd_arg: *mut c_void,
+    /// Get commands for a transmit carrier.
+    pub tx_cmd: extern "C" fn(
+        arg: *mut c_void,
+        carrier: i32,
+        commands: *mut L1TxCommands,
+    ),
+    /// Argument passed to tx_cmd.
+    pub tx_cmd_arg: *mut c_void,
 }
 
 pub struct L1 {
